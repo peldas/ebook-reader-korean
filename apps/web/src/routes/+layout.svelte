@@ -87,8 +87,8 @@
 <svelte:window bind:online={$isOnline$} />
 
 <MetaTags
-  title="ッツ Ebook Reader"
-  description="Online e-book reader that supports Yomichan"
+  title="ッツ Korean Ebook Reader"
+  description="Online e-book reader that supports Korean Yomichan"
   canonical="{basePath}{path !== '/' ? path : ''}"
   openGraph={{
     type: 'website',
@@ -132,6 +132,6 @@
   </div>
 {/if}
 
-<span style={`font-family: ${$fontFamilyGroupOne$ || 'Noto Serif JP'}`} />
+<span style={`font-family: ${$fontFamilyGroupOne$ || 'Noto Serif KR'}`} />
 
 <DomainHint />

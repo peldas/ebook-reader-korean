@@ -263,7 +263,7 @@
 
     if ($lastStatisticsSummarySortDirection$ === SortDirection.ASC) {
       if (isTitleSort) {
-        sortDiff = row1.title.localeCompare(row2.title, 'ja-JP', { numeric: true });
+        sortDiff = row1.title.localeCompare(row2.title, 'ko-KR', { numeric: true });
       } else if (isDateKeySort) {
         if (row1Prop === row2Prop) {
           sortDiff = 0;
@@ -274,7 +274,7 @@
         sortDiff = +row1Prop - +row2Prop;
       }
     } else if (isTitleSort) {
-      sortDiff = row2.title.localeCompare(row1.title, 'ja-JP', { numeric: true });
+      sortDiff = row2.title.localeCompare(row1.title, 'ko-KR', { numeric: true });
     } else if (isDateKeySort) {
       if (row1Prop === row2Prop) {
         sortDiff = 0;
@@ -286,7 +286,7 @@
     }
 
     if (!sortDiff) {
-      sortDiff = row1.title.localeCompare(row2.title, 'ja-JP', { numeric: true });
+      sortDiff = row1.title.localeCompare(row2.title, 'ko-KR', { numeric: true });
     }
 
     return sortDiff;

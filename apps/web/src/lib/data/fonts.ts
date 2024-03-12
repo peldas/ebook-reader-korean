@@ -10,8 +10,8 @@ export enum LocalFont {
   GENEI = 'Genei Koburi Mincho v5',
   KLEEONE = 'Klee One',
   KLEEONESEMIBOLD = 'Klee One SemiBold',
-  NOTOSANSJP = 'Noto Sans JP',
-  NOTOSERIFJP = 'Noto Serif JP',
+  NOTOSANSKR = 'Noto Sans KR',
+  NOTOSERIFKR = 'Noto Serif KR',
   SHIPPORIMINCHO = 'Shippori Mincho'
 }
 
@@ -29,8 +29,8 @@ export const reservedFontNames = new Set([
   'Genei Koburi Mincho v5',
   'Klee One',
   'Klee One SemiBold',
-  'Noto Sans JP',
-  'Noto Serif JP',
+  'Noto Sans KR',
+  'Noto Serif KR',
   'Shippori Mincho'
 ]);
 

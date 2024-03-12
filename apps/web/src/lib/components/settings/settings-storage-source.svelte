@@ -359,7 +359,7 @@
           Make sure to understand the
           <a
             class="text-red-500"
-            href="https://github.com/ttu-ttu/ebook-reader?tab=readme-ov-file#security-considerations"
+            href="https://github.com/peldas/ebook-reader-korean?tab=readme-ov-file#security-considerations"
             target="_blank"
           >
             Implications

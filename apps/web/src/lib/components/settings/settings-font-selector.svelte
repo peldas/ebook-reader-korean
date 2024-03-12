@@ -5,7 +5,7 @@
   import { dummyFn } from '$lib/functions/utils';
   import Fa from 'svelte-fa';
 
-  export let availableFonts: LocalFont[] = [LocalFont.NOTOSANSJP];
+  export let availableFonts: LocalFont[] = [LocalFont.NOTOSANSKR];
   export let fontValue: string;
 
   let element: Popover;

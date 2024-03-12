@@ -238,7 +238,7 @@
     padding: 12px 8px;
     border-radius: 20px;
     font-size: 15px;
-    font-family: 'Noto Sans JP', sans-serif;
+    font-family: 'Noto Sans KR', sans-serif;
     text-transform: uppercase;
     font-weight: 700;
     cursor: pointer;
