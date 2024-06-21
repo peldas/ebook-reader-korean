@@ -19,6 +19,7 @@
   } from '$lib/data/store';
   import { prependValue } from '$lib/functions/file-loaders/epub/generate-epub-html';
   import { getReferencePoints } from '$lib/functions/range-util';
+  import { getExternalTargetElement } from '$lib/functions/utils';
   import { faBookmark, faSpinner } from '@fortawesome/free-solid-svg-icons';
   import {
     animationFrameScheduler,
@@ -38,7 +39,7 @@
     takeUntil,
     timer
   } from 'rxjs';
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import Fa from 'svelte-fa';
   import type { AutoScroller, BookmarkManager, PageManager } from '../types';
   import { AutoScrollerContinuous } from './auto-scroller-continuous';
@@ -112,6 +113,7 @@
   const dispatch = createEventDispatcher<{
     bookmark: void;
     contentChange: HTMLElement;
+    trackerPause: void;
   }>();
 
   let allowDisplay = false;
@@ -235,7 +237,97 @@
     updateSectionProgress();
   }
 
+  /** Experimental Code - May be removed any time without warning */
+  onMount(() => document.addEventListener('ttu-action', handleAction, false));
+
+  function handleAction({ detail }: any) {
+    if (!detail.type) {
+      return;
+    }
+
+    if (detail.type === 'cue') {
+      const { scroll, rect } = needScroll(detail.selector, detail.scrollMode);
+
+      if (!scroll) {
+        return;
+      }
+
+      willNavigate = true;
+
+      if (verticalMode) {
+        window.scrollBy({
+          left: -(
+            window.innerWidth -
+            rect.right -
+            (firstDimensionMargin || 0) -
+            customReadingPointScrollOffset -
+            (!customReadingPointScrollOffset ||
+            (customReadingPointScrollOffset && scrollAdjustment > customReadingPointScrollOffset)
+              ? scrollAdjustment
+              : 0)
+          ),
+          top: 0,
+          behavior: detail.scrollBehavior || 'instant'
+        });
+      } else {
+        window.scrollBy({
+          left: 0,
+          top:
+            rect.top -
+            (firstDimensionMargin || 0) -
+            customReadingPointScrollOffset -
+            (!customReadingPointScrollOffset ||
+            (customReadingPointScrollOffset && scrollAdjustment > customReadingPointScrollOffset)
+              ? scrollAdjustment
+              : 0),
+          behavior: detail.scrollBehavior || 'instant'
+        });
+      }
+    } else if (
+      detail.type === 'pauseTracker' &&
+      needScroll(detail.selector, detail.scrollMode).scroll
+    ) {
+      dispatch('trackerPause');
+    }
+  }
+
+  function needScroll(selector: string, scrollMode: string) {
+    const targetElement = getExternalTargetElement(document, selector);
+
+    if (!targetElement || !contentEl) {
+      return { scroll: false, rect: { top: 0, right: 0, bottom: 0, left: 0 } };
+    }
+
+    const rect = targetElement.getBoundingClientRect();
+
+    if (!scrollMode || scrollMode === 'Always') {
+      return { scroll: true, rect };
+    }
+
+    const {
+      elTopReferencePoint,
+      elLeftReferencePoint,
+      elBottomReferencePoint,
+      elRightReferencePoint
+    } = getReferencePoints(window, contentEl, verticalMode, firstDimensionMargin);
+
+    if (verticalMode) {
+      return {
+        scroll: rect.left <= elLeftReferencePoint || rect.right >= elRightReferencePoint,
+        rect
+      };
+    }
+
+    return {
+      scroll: rect.top <= elTopReferencePoint || rect.bottom >= elBottomReferencePoint,
+      rect
+    };
+  }
+  /** Experimental Code - May be removed any time without warning */
+
   onDestroy(() => {
+    document.removeEventListener('ttu-action', handleAction, false);
+
     destroy$.next();
     destroy$.complete();
   });
@@ -562,9 +654,10 @@
   class:book-content--writing-horizontal-rl={!verticalMode}
   class:book-content--hide-furigana={hideFurigana}
   class:book-content--hide-spoiler-image={hideSpoilerImage}
+  class:book-content--furigana-style-hide={furiganaStyle === FuriganaStyle.Hide}
   class:book-content--furigana-style-partial={furiganaStyle === FuriganaStyle.Partial}
-  class:book-content--furigana-style-full={furiganaStyle === FuriganaStyle.Full}
   class:book-content--furigana-style-toggle={furiganaStyle === FuriganaStyle.Toggle}
+  class:book-content--furigana-style-full={furiganaStyle === FuriganaStyle.Full}
   class="book-content m-auto"
 >
   <HtmlRenderer html={htmlContent} on:load={onHtmlLoad} />

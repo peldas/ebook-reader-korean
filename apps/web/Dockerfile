@@ -1,6 +1,6 @@
 # Run from pnpm workspace root (e.g. docker build -t ebook-reader -f apps/web/Dockerfile .)
 
-FROM node:18.16-alpine as builder
+FROM node:20.11-alpine as builder
 
 RUN npm install -g pnpm
 
@@ -17,7 +17,7 @@ RUN pnpm svelte-kit sync
 RUN pnpm build
 
 
-FROM nginx:1.25-alpine
+FROM nginx:1.27-alpine
 
 COPY apps/web/nginx /etc/nginx
 COPY --from=builder /workspace/apps/web/build /usr/share/nginx/html
