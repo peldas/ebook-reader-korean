@@ -72,6 +72,8 @@
 
   export let writingMode: WritingMode;
 
+  export let showCharacterCounter: boolean;
+
   export let secondDimensionMaxValue: number;
 
   export let firstDimensionMargin: number;
@@ -162,16 +164,20 @@
 
   const optionsForFuriganaStyle: ToggleOption<FuriganaStyle>[] = [
     {
+      id: FuriganaStyle.Hide,
+      text: 'Hide'
+    },
+    {
       id: FuriganaStyle.Partial,
       text: 'Partial'
     },
     {
-      id: FuriganaStyle.Full,
-      text: 'Full'
-    },
-    {
       id: FuriganaStyle.Toggle,
       text: 'Toggle'
+    },
+    {
+      id: FuriganaStyle.Full,
+      text: 'Full'
     }
   ];
 
@@ -301,11 +307,14 @@
   $: verticalMode = writingMode === 'vertical-rl';
   $: fontCacheSupported = browser && 'caches' in window;
   $: switch (furiganaStyle) {
-    case FuriganaStyle.Full:
-      furiganaStyleTooltip = 'Hidden by default, show on hover or click';
+    case FuriganaStyle.Hide:
+      furiganaStyleTooltip = 'Always hidden';
       break;
     case FuriganaStyle.Toggle:
       furiganaStyleTooltip = 'Hidden by default, can be toggled on click';
+      break;
+    case FuriganaStyle.Full:
+      furiganaStyleTooltip = 'Hidden by default, show on hover or click';
       break;
     default:
       furiganaStyleTooltip = 'Display furigana as grayed out text';
@@ -553,6 +562,9 @@
     <SettingsItemGroup title="Writing mode">
       <ButtonToggleGroup options={optionsForWritingMode} bind:selectedOptionId={writingMode} />
     </SettingsItemGroup>
+    <SettingsItemGroup title="Show Character Counter">
+      <ButtonToggleGroup options={optionsForToggle} bind:selectedOptionId={showCharacterCounter} />
+    </SettingsItemGroup>
     <SettingsItemGroup title="Disable Wheel Navigation">
       <ButtonToggleGroup
         options={optionsForToggle}
@@ -764,7 +776,10 @@
         bind:selectedOptionId={readingGoalsMergeMode}
       />
     </SettingsItemGroup>
-    <SettingsItemGroup title="Enable Statistics">
+    <SettingsItemGroup
+      title="Enable Statistics"
+      tooltip="Enables the tracker icon in the bottom left corner of the reader which you need to use to start tracking your reading session"
+    >
       <ButtonToggleGroup options={optionsForToggle} bind:selectedOptionId={statisticsEnabled} />
     </SettingsItemGroup>
     {#if statisticsEnabled}
@@ -862,8 +877,8 @@
       {/if}
       {#if trackerAutoPause === TrackerAutoPause.STRICT}
         <SettingsItemGroup
-          title="Yomichan Detection"
-          tooltip={`Skips auto pause if yomichan was detected. Requires disabled "Secure Container" settings`}
+          title="Yomitan Detection"
+          tooltip={`Skips auto pause if Yomitan was detected. Requires disabled "Secure Container" settings`}
         >
           <ButtonToggleGroup
             options={optionsForToggle}

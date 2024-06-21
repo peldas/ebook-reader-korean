@@ -3,6 +3,7 @@
   import { nextChapter$ } from '$lib/components/book-reader/book-toc/book-toc';
   import HtmlRenderer from '$lib/components/html-renderer.svelte';
   import type { BooksDbBookmarkData } from '$lib/data/database/books-db/versions/books-db';
+  import { SECTION_CHANGE } from '$lib/data/events';
   import { isStoredFont } from '$lib/data/fonts';
   import { FuriganaStyle } from '$lib/data/furigana-style';
   import { logger } from '$lib/data/logger';
@@ -16,7 +17,7 @@
   } from '$lib/data/store';
   import { clearRange, createRange, pulseElement } from '$lib/functions/range-util';
   import { iffBrowser } from '$lib/functions/rxjs/iff-browser';
-  import { isMobile$ } from '$lib/functions/utils';
+  import { getExternalTargetElement, isMobile$ } from '$lib/functions/utils';
   import { faBookmark, faSpinner } from '@fortawesome/free-solid-svg-icons';
   import {
     BehaviorSubject,
@@ -33,13 +34,13 @@
     takeUntil,
     throttleTime
   } from 'rxjs';
-  import { createEventDispatcher, onDestroy } from 'svelte';
   import Fa from 'svelte-fa';
   import { swipe } from 'svelte-gestures';
   import type { BookmarkManager, PageManager } from '../types';
   import { BookmarkManagerPaginated } from './bookmark-manager-paginated';
   import { PageManagerPaginated } from './page-manager-paginated';
   import { SectionCharacterStatsCalculator } from './section-character-stats-calculator';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 
   export let htmlContent: string;
 
@@ -100,6 +101,7 @@
   const dispatch = createEventDispatcher<{
     bookmark: void;
     contentChange: HTMLElement;
+    trackerPause: void;
   }>();
 
   let scrollEl: HTMLElement | undefined;
@@ -135,6 +137,8 @@
   let bookmarkRightAdjustment: string | undefined;
 
   let fontLoadingAdded = false;
+
+  let currentSectionId = '';
 
   const width$ = new Subject<number>();
 
@@ -214,7 +218,12 @@
 
   $: {
     if (calculator && !loadingState) {
-      sectionRenderComplete$.next(sectionIndex$.getValue());
+      const sectionIndex = sectionIndex$.getValue();
+      const section = sections[sectionIndex];
+
+      currentSectionId = section?.id.startsWith('ttu-') ? section.id : '';
+
+      sectionRenderComplete$.next(sectionIndex);
     }
   }
 
@@ -232,14 +241,119 @@
   }
 
   $: if (browser) {
-    // because Yomichan popup creates overflow on vertical-rl
+    // because Yomitan popup creates overflow on vertical-rl
     document.body.classList.add(cssClassOverflowHidden);
   }
 
   $: updateAfterCustomReadingPointUpdate(customReadingPointRange);
 
+  /** Experimental Code - May be removed any time without warning */
+  onMount(() => document.addEventListener('ttu-action', handleAction, false));
+
+  async function handleAction({ detail }: any) {
+    if (!detail.type || !calculator || !concretePageManager) {
+      return;
+    }
+
+    if (detail.type === 'cue') {
+      const targetSection = getTargetSection(detail.selector);
+
+      if (targetSection === -1) {
+        return;
+      }
+
+      const currentSection = sectionIndex$.getValue();
+
+      if (currentSection !== targetSection) {
+        const waitForSection = new Promise<void>((resolve) => {
+          sectionReady$.pipe(take(1)).subscribe(() => resolve());
+        });
+
+        sectionIndex$.next(targetSection);
+        concretePageManager.scrollTo(0, false);
+
+        await waitForSection;
+      }
+
+      const scrollPos = getTargetScrollPos(calculator, detail.selector);
+
+      if (scrollPos < 0) {
+        return;
+      }
+
+      concretePageManager.scrollTo(scrollPos, true);
+
+      if (currentSection !== targetSection) {
+        document.dispatchEvent(new CustomEvent(SECTION_CHANGE));
+      }
+    } else if (detail.type === 'pauseTracker') {
+      const targetSection = getTargetSection(detail.selector);
+
+      if (targetSection === -1) {
+        return;
+      }
+
+      if (targetSection !== sectionIndex$.getValue()) {
+        dispatch('trackerPause');
+        return;
+      }
+
+      const scrollPos = getTargetScrollPos(calculator, detail.selector);
+
+      if (scrollPos < 0) {
+        return;
+      }
+
+      const currentScrollPos = calculator.getScrollPosByCharCount(
+        calculator.calcExploredCharCount(customReadingPointRange)
+      );
+
+      if (scrollPos !== currentScrollPos) {
+        dispatch('trackerPause');
+      }
+    }
+  }
+
+  function getTargetSection(selector: string) {
+    let targetSection = -1;
+
+    for (let index = 0, { length } = sections; index < length; index += 1) {
+      const element = getExternalTargetElement(sections[index], selector);
+
+      if (element) {
+        targetSection = index;
+        break;
+      }
+    }
+
+    return targetSection;
+  }
+
+  function getTargetScrollPos(
+    calculatorInstance: SectionCharacterStatsCalculator,
+    selector: string
+  ) {
+    const targetElement = getExternalTargetElement(document, selector);
+    const nodeRange = document.createRange();
+
+    if (!targetElement) {
+      return -1;
+    }
+
+    nodeRange.setStart(targetElement, 0);
+    nodeRange.setEnd(targetElement, targetElement.childNodes.length);
+
+    return calculatorInstance.getScrollPosByCharCount(
+      calculatorInstance.calcExploredCharCount(nodeRange)
+    );
+  }
+  /** Experimental Code - May be removed any time without warning */
+
   onDestroy(() => {
+    document.removeEventListener('ttu-action', handleAction, false);
+
     document.body.classList.remove(cssClassOverflowHidden);
+
     destroy$.next();
     destroy$.complete();
   });
@@ -392,7 +506,7 @@
       fontLoaded = true;
     }
 
-    if (fontLoaded) {
+    if (fontLoaded || fontLoadingAdded) {
       triggerContentChange();
     } else if (!fontLoadingAdded) {
       fontLoadingAdded = true;
@@ -504,7 +618,16 @@
   }
 
   function onKeydown(ev: KeyboardEvent) {
-    if (!concretePageManager || $skipKeyDownListener$) return;
+    if (
+      !concretePageManager ||
+      $skipKeyDownListener$ ||
+      ev.altKey ||
+      ev.ctrlKey ||
+      ev.shiftKey ||
+      ev.metaKey ||
+      ev.repeat
+    )
+      return;
     switch (ev.code) {
       case 'ArrowLeft':
         concretePageManager[verticalMode ? 'nextPage' : 'prevPage']();
@@ -569,14 +692,15 @@
   class:book-content--writing-horizontal-rl={!verticalMode}
   class:book-content--hide-furigana={hideFurigana}
   class:book-content--hide-spoiler-image={hideSpoilerImage}
+  class:book-content--furigana-style-hide={furiganaStyle === FuriganaStyle.Hide}
   class:book-content--furigana-style-partial={furiganaStyle === FuriganaStyle.Partial}
-  class:book-content--furigana-style-full={furiganaStyle === FuriganaStyle.Full}
   class:book-content--furigana-style-toggle={furiganaStyle === FuriganaStyle.Toggle}
+  class:book-content--furigana-style-full={furiganaStyle === FuriganaStyle.Full}
   class="book-content m-auto"
   use:swipe={{ timeframe: 500, minSwipeDistance: $swipeThreshold$, touchAction: 'pan-y' }}
   on:swipe={onSwipe}
 >
-  <div class="book-content-container" bind:this={contentEl}>
+  <div class="book-content-container" id={currentSectionId || null} bind:this={contentEl}>
     <HtmlRenderer html={displayedHtml} on:load={onHtmlLoad} />
   </div>
 </div>

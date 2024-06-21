@@ -24,7 +24,7 @@
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { faClock, faCloudBolt, faSpinner } from '@fortawesome/free-solid-svg-icons';
+  import { faCloudBolt, faPause, faPlay, faSpinner } from '@fortawesome/free-solid-svg-icons';
   import BookReader from '$lib/components/book-reader/book-reader.svelte';
   import type {
     AutoScroller,
@@ -76,7 +76,8 @@
     startDayHoursForTracker$,
     readingGoalsMergeMode$,
     pauseTrackerOnCustomPointChange$,
-    hideSpoilerImageMode$
+    hideSpoilerImageMode$,
+    showCharacterCounter$
   } from '$lib/data/store';
   import BookCompletionConfetti from '$lib/components/book-reader/book-completion-confetti/book-completion-confetti.svelte';
   import BookReaderHeader from '$lib/components/book-reader/book-reader-header.svelte';
@@ -103,14 +104,15 @@
   import ConfirmDialog from '$lib/components/confirm-dialog.svelte';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import { preFilteredTitlesForStatistics$ } from '$lib/components/statistics/statistics-types';
-  import type {
-    BooksDbBookData,
-    BooksDbBookmarkData,
-    BooksDbStatistic
+  import {
+    currentDbVersion,
+    type BooksDbBookData,
+    type BooksDbBookmarkData,
+    type BooksDbStatistic
   } from '$lib/data/database/books-db/versions/books-db';
   import { dialogManager } from '$lib/data/dialog-manager';
   import { pagePath } from '$lib/data/env';
-  import { PAGE_CHANGE } from '$lib/data/events';
+  import { DB_VERSION, PAGE_CHANGE, SKIPKEYLISTENER, SYNCED } from '$lib/data/events';
   import { fullscreenManager } from '$lib/data/fullscreen-manager';
   import { logger } from '$lib/data/logger';
   import { MergeMode } from '$lib/data/merge-mode';
@@ -146,7 +148,7 @@
   import { clickOutside } from '$lib/functions/use-click-outside';
   import { dummyFn, isMobile$ } from '$lib/functions/utils';
   import { onKeydownReader } from './on-keydown-reader';
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import Fa from 'svelte-fa';
   import {
     clearRange,
@@ -195,6 +197,11 @@
   let confettiWidthModifier = 36;
   let confettiMaxRuns = 0;
   let showReaderImageGallery = false;
+  let syncedResolver: () => void;
+
+  const syncedPromise = new Promise<void>((resolver) => {
+    syncedResolver = resolver;
+  });
   const queuedReaderImageGalleryPictures = new Map<string, boolean>();
 
   const bookId$ = iffBrowser(() => readableToObservable(page)).pipe(
@@ -271,6 +278,8 @@
         ]);
         return undefined;
       } finally {
+        syncedResolver();
+
         showSpinner = false;
       }
 
@@ -478,7 +487,42 @@
     storedExploredCharacter = data?.exploredCharCount || 0;
   });
 
-  onDestroy(() => readerImageGalleryPictures$.next([]));
+  /** Experimental Code - May be removed any time without warning */
+
+  $: if (browser) {
+    document.dispatchEvent(new CustomEvent(SKIPKEYLISTENER, { detail: $skipKeyDownListener$ }));
+  }
+
+  onMount(() => document.addEventListener('ttu-action', handleAction, false));
+
+  function handleAction({ detail }: any) {
+    if (!detail.type) {
+      return;
+    }
+
+    if (detail.type === 'dbVersion') {
+      document.dispatchEvent(new CustomEvent(DB_VERSION, { detail: currentDbVersion }));
+    } else if (detail.type === 'waitForSync') {
+      syncedPromise.finally(() => document.dispatchEvent(new CustomEvent(SYNCED)));
+    } else if (detail.type === 'skipKeyDownListener') {
+      skipKeyDownListener$.next(detail.params.value);
+    } else if (
+      detail.type === 'sync' &&
+      (detail.syncType === StorageDataType.AUDIOBOOK ||
+        detail.syncType === StorageDataType.SUBTITLE)
+    ) {
+      scheduleReplication(detail.syncType);
+    }
+  }
+  /** Experimental Code - May be removed any time without warning */
+
+  onDestroy(() => {
+    if (browser) {
+      document.removeEventListener('ttu-action', handleAction, false);
+    }
+
+    readerImageGalleryPictures$.next([]);
+  });
 
   function handleUnload(event: BeforeUnloadEvent) {
     if (
@@ -873,7 +917,13 @@
         localStorageHandler,
         false,
         [context],
-        [StorageDataType.PROGRESS, StorageDataType.STATISTICS, StorageDataType.READING_GOALS]
+        [
+          StorageDataType.PROGRESS,
+          StorageDataType.STATISTICS,
+          StorageDataType.READING_GOALS,
+          StorageDataType.AUDIOBOOK,
+          StorageDataType.SUBTITLE
+        ]
       );
 
       if (error) {
@@ -1098,13 +1148,17 @@
       }
 
       if (dataToReplicateQueue.length) {
+        const isAudioBookOnly =
+          dataToReplicate.length === 1 && dataToReplicate[0] === StorageDataType.AUDIOBOOK;
         dataToReplicate = JSON.parse(JSON.stringify(dataToReplicateQueue));
         dataToReplicateQueue = [];
 
-        if (isSilent) {
+        if (isSilent || isAudioBookOnly) {
           executeReplicate$.next();
-        } else {
+        } else if (!isAudioBookOnly) {
           await executeReplication(false);
+        } else {
+          dataToReplicate = [];
         }
       } else {
         dataToReplicate = [];
@@ -1508,6 +1562,7 @@
     bind:customReadingPointRange
     bind:showCustomReadingPoint
     on:bookmark={bookmarkPage}
+    on:trackerPause={() => pauseTracker(true)}
   />
   {$initBookmarkData$ ?? ''}
   {$setBackgroundColor$ ?? ''}
@@ -1580,10 +1635,10 @@
         title="Click to open Tracker Menu or Double Click to toggle Tracker"
         class="flex h-full w-8 items-center justify-center text-sm sm:text-lg"
         class:text-red-500={$isTrackerPaused$}
-        class:animate-pulse={$isTrackerPaused$ || frozenPosition > -1}
+        class:animate-pulse={frozenPosition > -1}
         use:multiClickHandler={[trackerSingleClickHandler, trackerDblClickHandler]}
       >
-        <Fa icon={faClock} />
+        <Fa icon={$isTrackerPaused$ ? faPlay : faPause} />
       </div>
     {/if}
     {#if dataToReplicate.length}
@@ -1621,8 +1676,13 @@
       role="button"
       title="Click to copy Progress"
       class="writing-horizontal-tb fixed bottom-2 right-2 z-10 text-xs leading-none select-none"
+      class:invisible={!$showCharacterCounter$}
       style:color={$themeOption$?.tooltipTextFontColor}
       on:click|stopPropagation={({ target }) => {
+        if (!$showCharacterCounter$) {
+          return;
+        }
+
         copyCurrentProgress(currentProgress);
 
         if (target instanceof HTMLElement) {
